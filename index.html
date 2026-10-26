@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#12372a">
+  <title>Raw Mill PR | Spare Parts & Procurement</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand-mark">RM</div>
+    <div class="brand">
+      <h1>Raw Mill PR</h1>
+      <p>Spare Parts • Inventory • Purchase Requests</p>
+    </div>
+    <div class="top-actions">
+      <span id="connectionBadge" class="badge neutral">غير متصل</span>
+      <button id="logoutBtn" class="btn ghost hidden">تسجيل الخروج</button>
+    </div>
+  </header>
+
+  <main class="shell">
+    <section id="configWarning" class="notice warning hidden"></section>
+    <section id="loginPanel" class="login-card">
+      <div class="login-copy">
+        <span class="eyebrow">SECURE WORKSPACE</span>
+        <h2>تسجيل الدخول</h2>
+        <p>ادخل بحساب Supabase المصرّح له للوصول إلى قاعدة بيانات قطع الغيار وطلبات PR.</p>
+      </div>
+      <form id="loginForm" class="form-grid">
+        <label>البريد الإلكتروني<input id="email" type="email" autocomplete="username" required></label>
+        <label>كلمة المرور<input id="password" type="password" autocomplete="current-password" required></label>
+        <button class="btn primary" type="submit">دخول</button>
+        <p id="loginMessage" class="form-message" role="status"></p>
+      </form>
+      <p class="small muted">يجب إنشاء حسابات المستخدمين من لوحة Supabase أولًا. التسجيل العام غير مفعّل من هذه الواجهة.</p>
+    </section>
+
+    <section id="appPanel" class="hidden">
+      <div class="hero">
+        <div>
+          <span class="eyebrow">MAINTENANCE MATERIALS</span>
+          <h2>إدارة قطع الغيار والمخزون وطلبات الشراء</h2>
+          <p>بحث سريع، حركات مخزون موثقة، طلبات شراء متعددة البنود، وتصدير التقارير.</p>
+        </div>
+        <div class="hero-stats">
+          <div><span id="partsCount">—</span><small>قطعة غيار</small></div>
+          <div><span id="lowStockCount">—</span><small>مخزون منخفض</small></div>
+          <div><span id="requestsCount">—</span><small>طلب PR</small></div>
+        </div>
+      </div>
+
+      <nav class="tabs" aria-label="التنقل">
+        <button class="tab active" data-view="partsView">قطع الغيار</button>
+        <button class="tab" data-view="stockView">حركات المخزون</button>
+        <button class="tab" data-view="requestsView">طلبات PR</button>
+        <button class="tab" data-view="reportsView">التقارير</button>
+      </nav>
+
+      <section id="partsView" class="view active-view">
+        <div class="section-head">
+          <div><h3>قاعدة قطع الغيار</h3><p>ابحث بكود SAP أو الكود القديم أو الوصف أو موقع التخزين.</p></div>
+          <button id="addPartBtn" class="btn primary">+ إضافة قطعة</button>
+        </div>
+        <div class="toolbar">
+          <input id="partsSearch" class="search" placeholder="ابحث عن قطعة غيار..." autocomplete="off">
+          <button id="exportPartsBtn" class="btn secondary">تصدير CSV / Excel</button>
+          <button id="printPartsBtn" class="btn secondary">طباعة / PDF</button>
+          <button id="refreshPartsBtn" class="btn ghost">تحديث</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>SAP Code</th><th>Old Code</th><th>الوصف</th><th>Bin</th><th>الوحدة</th><th>الرصيد</th><th>حد الطلب</th><th>إجراء</th></tr></thead>
+            <tbody id="partsTbody"><tr><td colspan="8" class="empty">سجّل الدخول لعرض البيانات.</td></tr></tbody>
+          </table>
+        </div>
+        <div id="partsPager" class="pager"></div>
+      </section>
+
+      <section id="stockView" class="view">
+        <div class="section-head"><div><h3>حركات المخزون</h3><p>كل استلام أو صرف أو تسوية يُحفظ كسجل مستقل.</p></div></div>
+        <form id="movementForm" class="panel form-grid three">
+          <label>قطعة الغيار<select id="movementPart" required></select></label>
+          <label>نوع الحركة<select id="movementType"><option value="RECEIPT">استلام (Receipt)</option><option value="ISSUE">صرف (Issue)</option><option value="ADJUSTMENT">تسوية (Adjustment)</option></select></label>
+          <label>الكمية<input id="movementQty" type="number" min="0.001" step="0.001" required></label>
+          <label>رقم المرجع / إذن الصرف<input id="movementRef" maxlength="120"></label>
+          <label class="span-2">ملاحظات<input id="movementNotes" maxlength="500"></label>
+          <button class="btn primary" type="submit">حفظ حركة المخزون</button>
+          <p id="movementMessage" class="form-message span-2"></p>
+        </form>
+        <div class="toolbar">
+          <button id="exportMovementsBtn" class="btn secondary">تصدير الحركات</button>
+          <button id="printMovementsBtn" class="btn secondary">طباعة / PDF</button>
+        </div>
+        <div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>كود SAP</th><th>الوصف</th><th>نوع الحركة</th><th>الكمية</th><th>المرجع</th><th>المستخدم</th></tr></thead><tbody id="movementsTbody"><tr><td colspan="7" class="empty">لا توجد بيانات بعد.</td></tr></tbody></table></div>
+      </section>
+
+      <section id="requestsView" class="view">
+        <div class="section-head"><div><h3>طلبات الشراء PR</h3><p>إنشاء طلب برقم مرجعي وإضافة عدة قطع ومتابعة حالة الطلب.</p></div><button id="newRequestBtn" class="btn primary">+ طلب PR جديد</button></div>
+        <div class="toolbar">
+          <input id="requestSearch" class="search" placeholder="بحث برقم PR أو القسم أو الغرض...">
+          <select id="requestStatusFilter"><option value="">كل الحالات</option><option>Pending</option><option>Approved</option><option>Rejected</option><option>Ordered</option><option>Partially Received</option><option>Received</option><option>Cancelled</option></select>
+          <button id="exportRequestsBtn" class="btn secondary">تصدير الطلبات</button>
+          <button id="printRequestsBtn" class="btn secondary">طباعة / PDF</button>
+        </div>
+        <div class="table-wrap"><table><thead><tr><th>رقم PR</th><th>التاريخ</th><th>القسم</th><th>الغرض</th><th>الحالة</th><th>البنود</th><th>إجراءات</th></tr></thead><tbody id="requestsTbody"><tr><td colspan="7" class="empty">لا توجد طلبات بعد.</td></tr></tbody></table></div>
+      </section>
+
+      <section id="reportsView" class="view">
+        <div class="section-head"><div><h3>التقارير والتصدير</h3><p>ملفات CSV تفتح في Excel. استخدم الطباعة ثم Save as PDF لإنشاء PDF.</p></div></div>
+        <div class="report-grid">
+          <article class="report-card"><h4>قائمة قطع الغيار</h4><p>الأكواد والوصف ومواقع التخزين والأرصدة وحدود المخزون.</p><button class="btn secondary" id="reportPartsBtn">تنزيل CSV</button></article>
+          <article class="report-card"><h4>حركات المخزون</h4><p>سجل الاستلام والصرف والتسويات مع المراجع والمستخدمين.</p><button class="btn secondary" id="reportStockBtn">تنزيل CSV</button></article>
+          <article class="report-card"><h4>طلبات PR</h4><p>حالة كل طلب وتاريخه والقسم والغرض وعدد البنود.</p><button class="btn secondary" id="reportPRBtn">تنزيل CSV</button></article>
+          <article class="report-card"><h4>طباعة التقرير الحالي</h4><p>اطبع الصفحة الحالية أو اختر حفظ كملف PDF من نافذة الطباعة.</p><button class="btn primary" id="printCurrentBtn">طباعة / PDF</button></article>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <dialog id="partDialog" class="modal">
+    <form id="partForm" method="dialog">
+      <div class="modal-head"><div><span class="eyebrow">SPARE PART MASTER</span><h3 id="partDialogTitle">إضافة قطعة غيار</h3></div><button type="button" class="icon-btn" data-close="partDialog">×</button></div>
+      <input type="hidden" id="partId">
+      <div class="form-grid two">
+        <label>كود SAP<input id="partSap" maxlength="100"></label>
+        <label>الكود القديم<input id="partOld" maxlength="100"></label>
+        <label class="span-2">الوصف<input id="partDescription" required maxlength="1000"></label>
+        <label>موقع التخزين (Bin)<input id="partBin" maxlength="100"></label>
+        <label>الوحدة<input id="partUnit" maxlength="40"></label>
+        <label>الرصيد الافتتاحي / الحالي<input id="partStock" type="number" min="0" step="0.001" value="0" required></label>
+        <label>حد إعادة الطلب<input id="partMin" type="number" min="0" step="0.001" value="0" required></label>
+        <label class="span-2">القيمة الأصلية للعمود الخامس<input id="partFifth" maxlength="250"></label>
+      </div>
+      <p class="small muted">الأرصدة المستوردة تبدأ من صفر. عند ضبط الرصيد لأول مرة، استخدم تسوية مخزون موثقة بدل تغيير الرصيد يدويًا.</p>
+      <div class="modal-actions"><button type="button" class="btn ghost" data-close="partDialog">إلغاء</button><button class="btn primary" type="submit">حفظ القطعة</button></div>
+      <p id="partMessage" class="form-message"></p>
+    </form>
+  </dialog>
+
+  <dialog id="requestDialog" class="modal wide">
+    <form id="requestForm" method="dialog">
+      <div class="modal-head"><div><span class="eyebrow">PURCHASE REQUISITION</span><h3>إنشاء طلب PR</h3></div><button type="button" class="icon-btn" data-close="requestDialog">×</button></div>
+      <div class="form-grid two">
+        <label>رقم PR / رقم داخلي<input id="prNumber" maxlength="100" placeholder="يُنشأ تلقائيًا إذا تركته فارغًا"></label>
+        <label>القسم<input id="prDepartment" maxlength="150"></label>
+        <label class="span-2">الغرض / وصف الطلب<input id="prPurpose" maxlength="500" required></label>
+        <label>الحالة<select id="prStatus"><option>Pending</option><option>Approved</option><option>Rejected</option><option>Ordered</option><option>Partially Received</option><option>Received</option><option>Cancelled</option></select></label>
+        <label>ملاحظات<input id="prNotes" maxlength="500"></label>
+      </div>
+      <div class="line-head"><h4>بنود الطلب</h4><button type="button" id="addPrLineBtn" class="btn secondary small-btn">+ إضافة بند</button></div>
+      <div id="prLines" class="pr-lines"></div>
+      <div class="modal-actions"><button type="button" class="btn ghost" data-close="requestDialog">إلغاء</button><button class="btn primary" type="submit">حفظ طلب PR</button></div>
+      <p id="requestMessage" class="form-message"></p>
+    </form>
+  </dialog>
+
+  <dialog id="requestDetailDialog" class="modal wide">
+    <div class="modal-head"><div><span class="eyebrow">REQUEST DETAILS</span><h3 id="requestDetailTitle">تفاصيل الطلب</h3></div><button type="button" class="icon-btn" data-close="requestDetailDialog">×</button></div>
+    <div id="requestDetailBody"></div>
+    <div class="modal-actions"><button class="btn secondary" id="printRequestDetailBtn">طباعة الطلب</button><button class="btn ghost" data-close="requestDetailDialog">إغلاق</button></div>
+  </dialog>
+
+  <div id="toast" class="toast" role="status"></div>
+  <footer><span>Raw Mill PR</span><span>Supabase database • Mobile & Desktop</span></footer>
+</body>
+</html>
