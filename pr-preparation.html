@@ -99,73 +99,61 @@ function emailDraft() {
   }
 
   const parseAddresses = value =>
-    value.split(/[;,]+/).map(x => x.trim()).filter(Boolean);
-
+    String(value || "").split(/[;,]+/).map(x => x.trim()).filter(Boolean);
   const to = parseAddresses($("emailTo").value);
   const cc = parseAddresses($("emailCc").value);
-
-  const valid = list =>
-    list.every(x => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x));
+  const valid = list => list.every(x => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x));
 
   if (!to.length) {
     status("actionMsg", "أدخل بريدًا واحدًا على الأقل في خانة To.", "error");
     return;
   }
-
   if (!valid(to) || !valid(cc)) {
-    status("actionMsg", "راجع عناوين البريد في To وCC.", "error");
+    status("actionMsg", "راجع عناوين البريد في To وCC؛ افصل بين العناوين بفاصلة منقوطة.", "error");
     return;
   }
 
   const subject = getTitle();
+  const bodyLines = [
+    "Dear Team,",
+    "",
+    "Please process the attached purchase request in the company ERP.",
+    "",
+    "Request title: " + getTitle(),
+    "Department / Area: " + ($("prDepartment").value.trim() || "—"),
+    "Purpose: " + ($("prPurpose").value.trim() || "—"),
+    "Number of line items: " + basket.length,
+    "",
+    "Please find the attached Excel file: Raw_Mill_PR_Request.xlsx",
+    "Note: Download the Excel file from the app and attach it manually before sending.",
+    "",
+    "Best regards"
+  ];
 
-  const body =
-    "Dear Team,\n\n" +
-    "Please process the attached purchase request in the company ERP.\n\n" +
-    "Request title: " + getTitle() + "\n" +
-    "Department / Area: " +
-    ($("prDepartment").value.trim() || "—") + "\n" +
-    "Purpose: " +
-    ($("prPurpose").value.trim() || "—") + "\n" +
-    "Number of line items: " + basket.length + "\n\n" +
-    "Please find the attached Excel file: Raw_Mill_PR_Request.xlsx\n" +
-    "Note: Download the Excel file from the app and attach it manually before sending.\n\n" +
-    "Best regards";
-
+  // Outlook Web compose deeplink reliably pre-fills To/subject/body, but CC support
+  // is inconsistent. Keep the CC list available to copy rather than silently losing it.
   const params = new URLSearchParams();
   params.set("to", to.join(";"));
-
-  if (cc.length) params.set("cc", cc.join(";"));
-
   params.set("subject", subject);
-  params.set("body", body);
-
-  const url =
-    "https://outlook.office.com/mail/deeplink/compose?" +
-    params.toString();
-
+  params.set("body", bodyLines.join("\r\n"));
+  const url = "https://outlook.office.com/mail/deeplink/compose?" + params.toString();
   const opened = window.open(url, "_blank");
 
   if (!opened) {
-    status(
-      "actionMsg",
-      "المتصفح منع فتح Outlook. اسمح بالنوافذ المنبثقة ثم حاول مرة أخرى.",
-      "error"
-    );
+    status("actionMsg", "المتصفح منع فتح Outlook. اسمح بالنوافذ المنبثقة لهذا الموقع ثم اضغط تجهيز الإيميل مرة أخرى.", "error");
     return;
   }
 
-  status(
-    "actionMsg",
-    "تم فتح مسودة Outlook. نزّل ملف Excel وأرفقه يدويًا قبل الإرسال.",
-    "success"
-  );
+  if (cc.length) {
+    status("actionMsg", "تم فتح مسودة Outlook. انسخ عناوين CC التالية إلى خانة Cc: " + cc.join("; ") + " — نزّل ملف Excel وأرفقه يدويًا قبل الإرسال.", "success");
+  } else {
+    status("actionMsg", "تم فتح مسودة Outlook. نزّل ملف Excel وأرفقه يدويًا قبل الإرسال.", "success");
+  }
 }
-
 async function addPart(e){e.preventDefault();status("addPartMsg","جارٍ حفظ الصنف...");const code=$("newOld").value.trim();const existing=parts.find(p=>String(old(p)).trim().toLowerCase()===code.toLowerCase());const payload={old_code:code,sap_code:$("newSap").value.trim()||null,bin_location:$("newBin").value.trim()||null,description:$("newDesc").value.trim(),unit:$("newSpec").value.trim()||null,original_fifth_column:$("newSpec").value.trim()||null,stock_on_hand:existing?.stock_on_hand??0,min_stock:existing?.min_stock??0,updated_at:new Date().toISOString()};try{let res;if(existing)res=await sb.from("spare_parts").update(payload).eq("id",existing.id);else res=await sb.from("spare_parts").insert(payload);if(res.error)throw res.error;$("addPartForm").reset();await loadParts();status("addPartMsg",existing?"تم تحديث الصنف الموجود بنفس Old Code.":"تمت إضافة الصنف بنجاح.","success");}catch(err){status("addPartMsg",err.message||"تعذر حفظ الصنف.","error");}}
 function normalize(s){return String(s??"").trim().toLowerCase().replace(/[\s_\-./]+/g,"");}
 function mapHeaders(row){const hs=row.map(normalize);const find=names=>hs.findIndex(h=>names.some(n=>h===normalize(n)||h.includes(normalize(n))));return{old:find(["Old code","Old Code","Old Code Number","الكود القديم"]),sap:find(["SAP Code","SAP","كود SAP"]),bin:find(["Bin","Bin Location","موقع التخزين"]),desc:find(["Material Description","Description","وصف الخامة","الوصف"]),spec:find(["المواصفة","Specification","Specification / Unit","Unit","Aarbic","Qu","الوحدة"])};}
-async function importParts(){const file=$("importFile").files[0];if(!file){status("importMsg","اختار ملف Excel أولًا.","error");return;}if(!window.ExcelJS){status("importMsg","مكتبة Excel لم تُحمّل. تحقق من الاتصال.","error");return;}status("importMsg","جارٍ قراءة الملف...");try{let rows=[];if(file.name.toLowerCase().endsWith(".csv")){const text=await file.text();rows=text.replace(/^\uFEFF/,"").split(/\r?\n/).filter(x=>x.trim()).map(line=>line.split(",").map(v=>v.replace(/^"|"$/g,"").replace(/""/g,'"')));}else{const buf=await file.arrayBuffer();const XLSX=await import("https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm");const wb=XLSX.read(buf,{type:"array"});const ws=wb.Sheets[wb.SheetNames[0]];rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:""});}let headerIndex=-1,map=null;for(let i=0;i<Math.min(rows.length,80);i++){const m=mapHeaders(rows[i]);if(m.old>=0&&m.desc>=0&&(m.sap>=0||m.bin>=0)){headerIndex=i;map=m;break;}}if(headerIndex<0)throw new Error("لم أجد صف العناوين. تأكد من وجود Old code وMaterial Description في الملف.");const parsed=[];for(let i=headerIndex+1;i<rows.length;i++){const r=rows[i];const oldCode=String(r[map.old]??"").trim();const desc=String(r[map.desc]??"").trim();if(!oldCode||!desc||oldCode==="0"||desc==="0")continue;parsed.push({old_code:oldCode,sap_code:map.sap>=0?String(r[map.sap]??"").trim()||null:null,bin_location:map.bin>=0?String(r[map.bin]??"").trim()||null:null,description:desc,unit:map.spec>=0?String(r[map.spec]??"").trim()||null:null,original_fifth_column:map.spec>=0?String(r[map.spec]??"").trim()||null:null});}if(!parsed.length)throw new Error("لم أجد صفوف أصناف صالحة أسفل صف العناوين.");let added=0,updated=0;for(let i=0;i<parsed.length;i+=40){const batch=parsed.slice(i,i+40);for(const p of batch){const existing=parts.find(x=>String(old(x)).trim().toLowerCase()===p.old_code.toLowerCase());let res;if(existing){res=await sb.from("spare_parts").update({...p,updated_at:new Date().toISOString()}).eq("id",existing.id);if(!res.error)updated++;}else{res=await sb.from("spare_parts").insert({...p,stock_on_hand:0,min_stock:0});if(!res.error)added++;}if(res.error)throw new Error(`خطأ عند الصنف ${p.old_code}: ${res.error.message}`);}status("importMsg",`تمت المعالجة ${Math.min(i+40,parsed.length)} من ${parsed.length}...`);}await loadParts();status("importMsg",`اكتمل الاستيراد: ${added} صنف جديد، و${updated} صنف تم تحديثه. الرصيد للأصناف الجديدة يبدأ من صفر.`,"success");}catch(err){status("importMsg",err.message||"فشل الاستيراد.","error");}}
+async function importParts(){const file=$("importFile").files[0];if(!file){status("importMsg","اختار ملف Excel أولًا.","error");return;}if(!window.ExcelJS){status("importMsg","مكتبة Excel لم تُحمّل. تحقق من الاتصال.","error");return;}status("importMsg","جارٍ قراءة الملف...");try{let rows=[];if(file.name.toLowerCase().endsWith(".csv")){const text=await file.text();rows=text.replace(/^\uFEFF/,"").split(/\r?\n/).filter(x=>x.trim()).map(parseCsvLine);}else{const buf=await file.arrayBuffer();const XLSX=await import("https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm");const wb=XLSX.read(buf,{type:"array"});const ws=wb.Sheets[wb.SheetNames[0]];rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:""});}let headerIndex=-1,map=null;for(let i=0;i<Math.min(rows.length,80);i++){const m=mapHeaders(rows[i]);if(m.old>=0&&m.desc>=0&&(m.sap>=0||m.bin>=0)){headerIndex=i;map=m;break;}}if(headerIndex<0)throw new Error("لم أجد صف العناوين. تأكد من وجود Old code وMaterial Description في الملف.");const parsed=[];for(let i=headerIndex+1;i<rows.length;i++){const r=rows[i];const oldCode=String(r[map.old]??"").trim();const desc=String(r[map.desc]??"").trim();if(!oldCode||!desc||oldCode==="0"||desc==="0")continue;parsed.push({old_code:oldCode,sap_code:map.sap>=0?String(r[map.sap]??"").trim()||null:null,bin_location:map.bin>=0?String(r[map.bin]??"").trim()||null:null,description:desc,unit:map.spec>=0?String(r[map.spec]??"").trim()||null:null,original_fifth_column:map.spec>=0?String(r[map.spec]??"").trim()||null:null});}if(!parsed.length)throw new Error("لم أجد صفوف أصناف صالحة أسفل صف العناوين.");let added=0,updated=0;for(let i=0;i<parsed.length;i+=40){const batch=parsed.slice(i,i+40);for(const p of batch){const existing=parts.find(x=>String(old(x)).trim().toLowerCase()===p.old_code.toLowerCase());let res;if(existing){res=await sb.from("spare_parts").update({...p,updated_at:new Date().toISOString()}).eq("id",existing.id);if(!res.error)updated++;}else{res=await sb.from("spare_parts").insert({...p,stock_on_hand:0,min_stock:0});if(!res.error)added++;}if(res.error)throw new Error(`خطأ عند الصنف ${p.old_code}: ${res.error.message}`);}status("importMsg",`تمت المعالجة ${Math.min(i+40,parsed.length)} من ${parsed.length}...`);}await loadParts();status("importMsg",`اكتمل الاستيراد: ${added} صنف جديد، و${updated} صنف تم تحديثه. الرصيد للأصناف الجديدة يبدأ من صفر.`,"success");}catch(err){status("importMsg",err.message||"فشل الاستيراد.","error");}}
 
 const CONTACTS_KEY="rawMillPR_contacts_v1";
 let savedContacts=[];
@@ -187,7 +175,7 @@ async function importContacts(){
   if(file.name.toLowerCase().endsWith(".csv")){rows=(await file.text()).replace(/^\uFEFF/,"").split(/\r?\n/).filter(x=>x.trim()).map(parseCsvLine);}
   else {const XLSX=await import("https://cdn.jsdelivr.net/npm/xlsx@0.18.5/+esm");const wb=XLSX.read(await file.arrayBuffer(),{type:"array"});rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:""});}
   let hi=-1,ni=-1,ei=-1;
-  for(let i=0;i<Math.min(rows.length,50);i++){const hs=rows[i].map(normHeader);const e=hs.findIndex(x=>["email","emailaddress","e-mail","mail","البريدالالكتروني","البريد"].includes(x));if(e>=0){hi=i;ei=e;ni=hs.findIndex(x=>["name","fullname","contactname","الاسم","اسم"].includes(x));break;}}
+  for(let i=0;i<Math.min(rows.length,50);i++){const hs=rows[i].map(normHeader);const e=hs.findIndex(x=>["email","emailaddress","mail","البريدالالكتروني","البريدالالكتروني","البريد"].includes(x));if(e>=0){hi=i;ei=e;ni=hs.findIndex(x=>["name","fullname","contactname","الاسم","اسم"].includes(x));break;}}
   if(hi<0)throw new Error("لم أجد عمود بريد إلكتروني. استخدم عنوان Email أو E-mail أو البريد الإلكتروني.");
   let added=0,updated=0;
   for(const row of rows.slice(hi+1)){const email=String(row[ei]??"").trim();if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))continue;const name=ni>=0?String(row[ni]??"").trim():"";const idx=savedContacts.findIndex(c=>c.email.toLowerCase()===email.toLowerCase());if(idx>=0){savedContacts[idx]={email,name:name||savedContacts[idx].name||""};updated++;}else{savedContacts.push({email,name});added++;}}
