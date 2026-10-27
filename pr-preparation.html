@@ -92,62 +92,58 @@ function getTitle(){return $("prTitle").value.trim()||$("prDepartment").value.tr
 function getRows(){return basket.map((p,i)=>({no:i+1,old_code:old(p),sap_code:p.sap_code||"",bin:p.bin_location||"",description:p.description||"",spec:spec(p),qty:Number(p.required_quantity)}));}
 async function download(){if(!basket.length){status("actionMsg","أضف بندًا واحدًا على الأقل أولًا.","error");return;}if(!window.ExcelJS){status("actionMsg","مكتبة Excel لم تُحمّل. تحقق من الاتصال بالإنترنت ثم أعد المحاولة.","error");return;}try{const wb=new ExcelJS.Workbook();wb.creator=currentUser?.email||"Raw Mill PR";wb.created=new Date();const ws=wb.addWorksheet("Purchase Request",{views:[{state:"frozen",ySplit:5}]});ws.mergeCells("A1:G1");ws.getCell("A1").value="RAW MILL — PURCHASE REQUISITION";ws.getCell("A1").font={name:"Arial",size:16,bold:true,color:{argb:"FFFFFFFF"}};ws.getCell("A1").fill={type:"pattern",pattern:"solid",fgColor:{argb:"FF12372A"}};ws.getCell("A1").alignment={horizontal:"center",vertical:"middle"};ws.getRow(1).height=30;ws.mergeCells("A2:G2");ws.getCell("A2").value=getTitle();ws.getCell("A2").font={name:"Arial",size:13,bold:true,color:{argb:"FF176B46"}};ws.getCell("A2").alignment={horizontal:"center"};ws.mergeCells("A3:C3");ws.getCell("A3").value="Department / Area: "+($("prDepartment").value.trim()||"—");ws.mergeCells("D3:G3");ws.getCell("D3").value="Date: "+new Date().toLocaleDateString("en-GB");ws.mergeCells("A4:G4");ws.getCell("A4").value="Purpose: "+($("prPurpose").value.trim()||"—");ws.getRow(4).height=22;ws.addRow([]);const headers=["No.","Old Code","SAP Code","Bin","Material Description","Specification / Unit","Required Quantity"];const hr=ws.addRow(headers);hr.height=26;hr.eachCell(c=>{c.font={name:"Arial",bold:true,color:{argb:"FFFFFFFF"}};c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FF176B46"}};c.alignment={horizontal:"center",vertical:"middle",wrapText:true};c.border={top:{style:"thin",color:{argb:"FFB8C8BD"}},bottom:{style:"thin",color:{argb:"FFB8C8BD"}}};});getRows().forEach((r,i)=>{const row=ws.addRow([r.no,r.old_code,r.sap_code,r.bin,r.description,r.spec,r.qty]);row.height=24;row.eachCell(c=>{c.font={name:"Arial",size:10,color:{argb:"FF17251E"}};c.alignment={vertical:"middle",horizontal:[1,7].includes(c.col)?"center":"left",wrapText:true};c.border={bottom:{style:"hair",color:{argb:"FFDCE6DF"}}};if(i%2===1)c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFF3F7F4"}};});row.getCell(7).numFmt="#,##0.###";});ws.columns=[{width:7},{width:17},{width:17},{width:16},{width:48},{width:26},{width:19}];ws.autoFilter={from:{row:6,column:1},to:{row:6+getRows().length,column:7}};const totalRow=ws.addRow(["","","","","","Total line items",basket.length]);totalRow.font={name:"Arial",bold:true,color:{argb:"FF12372A"}};totalRow.getCell(6).alignment={horizontal:"right"};totalRow.getCell(7).alignment={horizontal:"center"};ws.pageSetup={orientation:"landscape",fitToPage:true,fitToWidth:1,fitToHeight:0,paperSize:ws.PAPER_SIZE_A4};ws.headerFooter.oddFooter="Raw Mill PR • Page &P of &N";const buf=await wb.xlsx.writeBuffer();const blob=new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="Raw_Mill_PR_Request.xlsx";a.click();setTimeout(()=>URL.revokeObjectURL(url),1500);status("actionMsg","تم تنزيل ملف Excel منسق. أرفقه برسالة Outlook قبل الإرسال.","success");}catch(e){status("actionMsg","تعذر إنشاء Excel: "+(e.message||e),"error");}}
 
-function emailDraft() {
+async function emailDraft() {
   if (!basket.length) {
     status("actionMsg", "أضف بندًا واحدًا على الأقل أولًا.", "error");
     return;
   }
-
-  const parseAddresses = value =>
-    String(value || "").split(/[;,]+/).map(x => x.trim()).filter(Boolean);
+  const parseAddresses = value => String(value || "").split(/[;,]+/).map(x => x.trim()).filter(Boolean);
   const to = parseAddresses($("emailTo").value);
   const cc = parseAddresses($("emailCc").value);
   const valid = list => list.every(x => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x));
+  if (!to.length) { status("actionMsg", "أدخل بريدًا واحدًا على الأقل في خانة To.", "error"); return; }
+  if (!valid(to) || !valid(cc)) { status("actionMsg", "راجع عناوين البريد في To وCC؛ افصل بين العناوين بفاصلة منقوطة.", "error"); return; }
 
-  if (!to.length) {
-    status("actionMsg", "أدخل بريدًا واحدًا على الأقل في خانة To.", "error");
-    return;
-  }
-  if (!valid(to) || !valid(cc)) {
-    status("actionMsg", "راجع عناوين البريد في To وCC؛ افصل بين العناوين بفاصلة منقوطة.", "error");
-    return;
-  }
-
-  const subject = getTitle();
   const bodyLines = [
-    "Dear Team,",
-    "",
-    "Please process the attached purchase request in the company ERP.",
-    "",
+    "Dear Team,", "",
+    "Please process the attached purchase request in the company ERP.", "",
     "Request title: " + getTitle(),
     "Department / Area: " + ($("prDepartment").value.trim() || "—"),
     "Purpose: " + ($("prPurpose").value.trim() || "—"),
-    "Number of line items: " + basket.length,
-    "",
+    "Number of line items: " + basket.length, "",
     "Please find the attached Excel file: Raw_Mill_PR_Request.xlsx",
-    "Note: Download the Excel file from the app and attach it manually before sending.",
-    "",
-    "Best regards"
+    "Note: Download the Excel file from the app and attach it manually before sending.", "", "Best regards"
   ];
-
-  // Outlook Web compose deeplink reliably pre-fills To/subject/body, but CC support
-  // is inconsistent. Keep the CC list available to copy rather than silently losing it.
   const params = new URLSearchParams();
   params.set("to", to.join(";"));
-  params.set("subject", subject);
+  params.set("subject", getTitle());
   params.set("body", bodyLines.join("\r\n"));
-  const url = "https://outlook.office.com/mail/deeplink/compose?" + params.toString();
-  const opened = window.open(url, "_blank");
+  // Open during the click event so popup blockers are less likely to stop Outlook.
+  const outlookWindow = window.open("https://outlook.office.com/mail/deeplink/compose?" + params.toString(), "_blank");
+  if (!outlookWindow) { status("actionMsg", "المتصفح منع فتح Outlook. اسمح بالنوافذ المنبثقة لهذا الموقع ثم اضغط تجهيز الإيميل مرة أخرى.", "error"); return; }
+  if (!cc.length) { status("actionMsg", "تم فتح مسودة Outlook. لا توجد عناوين CC. نزّل ملف Excel وأرفقه يدويًا قبل الإرسال.", "success"); return; }
 
-  if (!opened) {
-    status("actionMsg", "المتصفح منع فتح Outlook. اسمح بالنوافذ المنبثقة لهذا الموقع ثم اضغط تجهيز الإيميل مرة أخرى.", "error");
-    return;
+  const ccText = cc.join("; ");
+  let copied = false;
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(ccText);
+      copied = true;
+    }
+  } catch (_) {}
+  if (!copied) {
+    try {
+      const field = document.createElement("textarea");
+      field.value = ccText; field.setAttribute("readonly", "");
+      field.style.position = "fixed"; field.style.left = "-9999px";
+      document.body.appendChild(field); field.select();
+      copied = document.execCommand("copy"); field.remove();
+    } catch (_) {}
   }
-
-  if (cc.length) {
-    status("actionMsg", "تم فتح مسودة Outlook. انسخ عناوين CC التالية إلى خانة Cc: " + cc.join("; ") + " — نزّل ملف Excel وأرفقه يدويًا قبل الإرسال.", "success");
+  if (copied) {
+    status("actionMsg", "تم فتح مسودة Outlook ونسخ عناوين CC إلى الحافظة. انتقل إلى المسودة واضغط داخل خانة Cc ثم Ctrl+V للصق العناوين. نزّل ملف Excel وأرفقه يدويًا قبل الإرسال.", "success");
   } else {
-    status("actionMsg", "تم فتح مسودة Outlook. نزّل ملف Excel وأرفقه يدويًا قبل الإرسال.", "success");
+    status("actionMsg", "تم فتح مسودة Outlook، لكن المتصفح لم يسمح بنسخ CC تلقائيًا. انسخ العناوين يدويًا: " + ccText + " — نزّل ملف Excel وأرفقه قبل الإرسال.", "error");
   }
 }
 async function addPart(e){e.preventDefault();status("addPartMsg","جارٍ حفظ الصنف...");const code=$("newOld").value.trim();const existing=parts.find(p=>String(old(p)).trim().toLowerCase()===code.toLowerCase());const payload={old_code:code,sap_code:$("newSap").value.trim()||null,bin_location:$("newBin").value.trim()||null,description:$("newDesc").value.trim(),unit:$("newSpec").value.trim()||null,original_fifth_column:$("newSpec").value.trim()||null,stock_on_hand:existing?.stock_on_hand??0,min_stock:existing?.min_stock??0,updated_at:new Date().toISOString()};try{let res;if(existing)res=await sb.from("spare_parts").update(payload).eq("id",existing.id);else res=await sb.from("spare_parts").insert(payload);if(res.error)throw res.error;$("addPartForm").reset();await loadParts();status("addPartMsg",existing?"تم تحديث الصنف الموجود بنفس Old Code.":"تمت إضافة الصنف بنجاح.","success");}catch(err){status("addPartMsg",err.message||"تعذر حفظ الصنف.","error");}}
