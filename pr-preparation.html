@@ -19,7 +19,7 @@
 <div class="actions" style="margin-top:12px"><button id="saveProfile" class="secondary">حفظ بيانات الطلب للجلسة</button><span id="profileMsg" class="status muted"></span></div></div>
 <div class="tabs"><button class="tab active" data-tab="searchSection">البحث وتجهيز الطلب</button><button class="tab" data-tab="partsSection">إضافة واستيراد الأصناف</button><button class="tab" data-tab="accountSection">تغيير البريد وكلمة المرور</button></div>
 <section id="searchSection" class="section active">
-<div class="card"><h2>1. ابحث عن الصنف</h2><p class="help">اكتب Old Code أو جزءًا منه. أدخل الكمية المطلوبة واضغط إضافة للطلب.</p><div class="searchrow"><div><label for="search">Old Code — الكود القديم</label><input id="search" placeholder="اكتب الكود القديم..." autocomplete="off"></div><button id="clearSearch" class="secondary">مسح البحث</button></div><p id="searchMsg" class="status muted">ابدأ بكتابة الكود القديم للبحث.</p><div class="tablewrap"><table><thead><tr><th>Old Code</th><th>SAP Code</th><th>Bin</th><th>Material Description</th><th>Specification / Unit</th><th>الكمية المطلوبة</th><th>إضافة</th></tr></thead><tbody id="results"><tr><td colspan="7" class="empty">لا توجد نتائج بعد.</td></tr></tbody></table></div></div>
+<div class="card"><h2>1. ابحث عن الصنف</h2><p class="help">اكتب Old Code أو جزءًا منه. أدخل الكمية المطلوبة واضغط إضافة للطلب.</p><div class="grid2"><div><label for="searchOld">Old Code — الكود القديم</label><input id="searchOld" placeholder="ابحث بالكود القديم فقط..." autocomplete="off"></div><div><label for="searchSap">SAP Code — كود SAP</label><input id="searchSap" placeholder="ابحث بكود SAP فقط..." autocomplete="off"></div></div><div class="actions" style="margin-top:10px"><button id="clearSearch" class="secondary" type="button">مسح البحث</button></div><p id="searchMsg" class="status muted">اكتب الكود القديم أو كود SAP في الخانة المناسبة.</p><div class="tablewrap"><table><thead><tr><th>Old Code</th><th>SAP Code</th><th>Bin</th><th>Material Description</th><th>Specification / Unit</th><th>الكمية المطلوبة</th><th>إضافة</th></tr></thead><tbody id="results"><tr><td colspan="7" class="empty">لا توجد نتائج بعد.</td></tr></tbody></table></div></div>
 <div class="card"><div class="baskethead"><div><h2>2. جدول طلب الشراء</h2><p class="help">راجع المنطقة والكميات قبل تنزيل ملف Excel وتجهيز الإيميل.</p></div><span id="count" class="pill">0 بند</span></div><div class="tablewrap"><table><thead><tr><th>Old Code</th><th>SAP Code</th><th>Bin</th><th>Material Description</th><th>Specification / Unit</th><th>Required Quantity</th><th>إجراء</th></tr></thead><tbody id="basket"><tr><td colspan="7" class="empty">أضف الأصناف من نتائج البحث.</td></tr></tbody></table></div><div class="actions" style="margin-top:16px"><button id="download" class="primary">تنزيل طلب الشراء Excel</button><button id="email" class="secondary">تجهيز إيميل Outlook</button><button id="clearBasket" class="danger">مسح كل البنود</button></div><p id="actionMsg" class="status muted"></p></div>
 </section>
 <section id="partsSection" class="section">
@@ -46,23 +46,26 @@ function loadProfile(){for(const id of ["prTitle","prDepartment","prPurpose"]){c
 function saveProfile(){for(const id of ["prTitle","prDepartment","prPurpose"])sessionStorage.setItem("rmpr_"+id,$(id).value.trim());status("profileMsg","تم حفظ بيانات الطلب في جلسة المتصفح الحالية.","success");}
 async function loadParts(){const {data,error}=await sb.from("spare_parts").select("*").order("old_code",{ascending:true}).limit(10000);if(error)throw error;parts=data||[];$("partCount").textContent=`${parts.length.toLocaleString("en-US")} صنف`;renderResults();}
 async function renderResults(){
- const q=$("search").value.trim();
+ const oldQ=$("searchOld").value.trim();
+ const sapQ=$("searchSap").value.trim();
  const run=++searchRun;
- if(!q){searchMatches=[];$("results").innerHTML='<tr><td colspan="7" class="empty">اكتب Old Code أو SAP Code لعرض النتائج.</td></tr>';status("searchMsg","ابدأ بكتابة الكود القديم أو كود SAP.");return;}
+ if(!oldQ&&!sapQ){searchMatches=[];$("results").innerHTML='<tr><td colspan="7" class="empty">اكتب Old Code أو SAP Code في الخانة المناسبة لعرض النتائج.</td></tr>';status("searchMsg","اكتب الكود في خانته المخصصة.");return;}
  if(!sb){status("searchMsg","قاعدة البيانات غير متصلة.","error");return;}
  status("searchMsg","جارٍ البحث في قاعدة البيانات...");
  try{
-  const safe=q.replace(/[%,()]/g," ").trim();
-  if(!safe){searchMatches=[];$("results").innerHTML='<tr><td colspan="7" class="empty">اكتب كودًا صالحًا للبحث.</td></tr>';return;}
-  const {data,error}=await sb.from("spare_parts").select("*").or(`old_code.ilike.%${safe}%,sap_code.ilike.%${safe}%`).order("old_code",{ascending:true}).limit(100);
+  let query=sb.from("spare_parts").select("*");
+  if(oldQ){const safe=oldQ.replace(/[%,()]/g," ").trim();if(!safe){searchMatches=[];$("results").innerHTML='<tr><td colspan="7" class="empty">اكتب كودًا صالحًا للبحث.</td></tr>';return;}query=query.ilike("old_code",`%${safe}%`);}
+  else {const safe=sapQ.replace(/[%,()]/g," ").trim();if(!safe){searchMatches=[];$("results").innerHTML='<tr><td colspan="7" class="empty">اكتب كودًا صالحًا للبحث.</td></tr>';return;}query=query.ilike("sap_code",`%${safe}%`);}
+  const {data,error}=await query.order("old_code",{ascending:true}).limit(100);
   if(error)throw error;
   if(run!==searchRun)return;
   searchMatches=data||[];
   for(const p of searchMatches){const i=parts.findIndex(x=>String(x.id)===String(p.id));if(i>=0)parts[i]=p;else parts.push(p);}
-  $("results").innerHTML=searchMatches.length?searchMatches.map((p,i)=>`<tr><td>${esc(old(p))}</td><td>${esc(p.sap_code)}</td><td>${esc(p.bin_location)}</td><td>${esc(p.description)}</td><td>${esc(spec(p))}</td><td><input class="qty" type="number" min="0.001" step="0.001" value="1" id="qty-${i}" aria-label="الكمية المطلوبة"></td><td><button class="primary" data-add="${esc(p.id)}" data-idx="${i}">إضافة للطلب</button></td></tr>`).join(""):'<tr><td colspan="7" class="empty">لا توجد أصناف بهذا الكود القديم أو كود SAP.</td></tr>';
+  $("results").innerHTML=searchMatches.length?searchMatches.map((p,i)=>`<tr><td>${esc(old(p))}</td><td>${esc(p.sap_code)}</td><td>${esc(p.bin_location)}</td><td>${esc(p.description)}</td><td>${esc(spec(p))}</td><td><input class="qty" type="number" min="0.001" step="0.001" value="1" id="qty-${i}" aria-label="الكمية المطلوبة"></td><td><button class="primary" data-add="${esc(p.id)}" data-idx="${i}">إضافة للطلب</button></td></tr>`).join(""):'<tr><td colspan="7" class="empty">لا توجد نتائج مطابقة للكود المدخل في خانته.</td></tr>';
   status("searchMsg",searchMatches.length?`عدد النتائج: ${searchMatches.length}${searchMatches.length===100?" (أول 100 نتيجة)":""}`:"لم يتم العثور على الصنف.");
  }catch(err){if(run!==searchRun)return;searchMatches=[];$("results").innerHTML='<tr><td colspan="7" class="empty">تعذر البحث في قاعدة البيانات.</td></tr>';status("searchMsg","خطأ أثناء البحث: "+(err.message||err),"error");}
 }
+
 function renderBasket(){$("count").textContent=`${basket.length} بند`;$("basket").innerHTML=basket.length?basket.map((p,i)=>`<tr><td>${esc(old(p))}</td><td>${esc(p.sap_code)}</td><td>${esc(p.bin_location)}</td><td>${esc(p.description)}</td><td>${esc(spec(p))}</td><td><input class="qty" type="number" min="0.001" step="0.001" value="${esc(p.required_quantity)}" data-qty="${i}" aria-label="الكمية المطلوبة"></td><td><button class="danger" data-remove="${i}">حذف</button></td></tr>`).join(""):'<tr><td colspan="7" class="empty">أضف الأصناف من نتائج البحث.</td></tr>';}
 function getTitle(){return $("prTitle").value.trim()||$("prDepartment").value.trim()||"Raw Mill Spare Parts Purchase Request";}
 function getRows(){return basket.map((p,i)=>({no:i+1,old_code:old(p),sap_code:p.sap_code||"",bin:p.bin_location||"",description:p.description||"",spec:spec(p),qty:Number(p.required_quantity)}));}
@@ -75,7 +78,7 @@ async function importParts(){const file=$("importFile").files[0];if(!file){statu
 $("loginForm").addEventListener("submit",async e=>{e.preventDefault();status("loginMsg","جارٍ تسجيل الدخول...");try{const {data,error}=await sb.auth.signInWithPassword({email:$("email").value.trim(),password:$("password").value});if(error)throw error;setAuth(true,data.user);await loadParts();}catch(err){status("loginMsg",err.message||"تعذر تسجيل الدخول.","error");}});
 $("logout").addEventListener("click",async()=>{await sb.auth.signOut();parts=[];basket=[];setAuth(false);renderBasket();});
 document.querySelectorAll(".tab").forEach(b=>b.addEventListener("click",()=>switchTab(b.dataset.tab)));
-$("search").addEventListener("input",()=>{renderResults();});$("clearSearch").addEventListener("click",()=>{$("search").value="";renderResults();});
+$("searchOld").addEventListener("input",()=>{if($("searchOld").value.trim())$("searchSap").value="";renderResults();});$("searchSap").addEventListener("input",()=>{if($("searchSap").value.trim())$("searchOld").value="";renderResults();});$("clearSearch").addEventListener("click",()=>{$("searchOld").value="";$("searchSap").value="";renderResults();});
 $("results").addEventListener("click",e=>{const b=e.target.closest("[data-add]");if(!b)return;const p=searchMatches.find(x=>String(x.id)===String(b.dataset.add))||parts.find(x=>String(x.id)===String(b.dataset.add));const q=Number($("qty-"+b.dataset.idx).value);if(!p||!Number.isFinite(q)||q<=0){status("actionMsg","أدخل كمية صحيحة.","error");return;}const existing=basket.find(x=>String(x.id)===String(p.id));if(existing)existing.required_quantity=Number(existing.required_quantity)+q;else basket.push({...p,required_quantity:q});renderBasket();status("actionMsg","تمت إضافة الصنف إلى طلب الشراء.","success");});
 $("basket").addEventListener("input",e=>{const i=e.target.dataset.qty;if(i===undefined)return;const q=Number(e.target.value);if(Number.isFinite(q)&&q>0)basket[Number(i)].required_quantity=q;});
 $("basket").addEventListener("change",renderBasket);
