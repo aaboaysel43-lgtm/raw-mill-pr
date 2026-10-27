@@ -94,7 +94,7 @@ async function download(){if(!basket.length){status("actionMsg","أضف بندً
 
 async function emailDraft() {
   if (!basket.length) {
-    status("actionMsg", "أضف بندًا واحدًا على الأقل أولًا.", "error");
+    status("actionMsg", "أضف بندًا واحدًا على الأقل أولًا.", "error"); 
     return;
   }
   const parseAddresses = value => String(value || "").split(/[;,]+/).map(x => x.trim()).filter(Boolean);
